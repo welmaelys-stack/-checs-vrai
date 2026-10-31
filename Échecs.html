@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Échecs</title>
+<style>
+:root{--bg:#17211f;--tx:#eef2ef;--l:#e9e0cc;--d:#5f7f6e;--sel:#f2b632;--mv:rgba(242,182,50,.75);--chk:#e5484d}
+@media (prefers-color-scheme: light){:root{--bg:#e8eee9;--tx:#17211f}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif}
+#st{font-size:20px;font-weight:600;min-height:28px;text-align:center;padding:0 12px}
+#b{display:grid;grid-template-columns:repeat(8,1fr);width:min(94vw,72vh,600px);aspect-ratio:1;border:4px solid #0e1513;border-radius:6px;overflow:hidden}
+.s{display:flex;align-items:center;justify-content:center;font-size:min(10vw,8vh,64px);line-height:1;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;position:relative}
+.s.l{background:var(--l)}
+.s.d{background:var(--d)}
+.s.sel{background:var(--sel)}
+.s.chk{background:var(--chk)}
+.s.mv::after{content:"";position:absolute;width:30%;height:30%;border-radius:50%;background:var(--mv)}
+.s.cap::after{width:86%;height:86%;background:transparent;border:5px solid var(--mv)}
+.w{color:#fff;text-shadow:0 0 2px #000,0 0 3px #000,0 0 3px #000}
+.k{color:#141414}
+#bar{display:flex;gap:10px}
+button{font:inherit;font-size:17px;padding:12px 20px;border:0;border-radius:10px;background:var(--sel);color:#17211f;font-weight:600;cursor:pointer}
+button:focus-visible{outline:3px solid var(--tx);outline-offset:2px}
+button:disabled{opacity:.4}
+</style>
+</head>
+<body>
+<div id="st"></div>
+<div id="b"></div>
+<div id="bar">
+  <button id="undo">Annuler le coup</button>
+  <button id="new">Nouvelle partie</button>
+</div>
+<script>
+const G={K:'♚',Q:'♛',R:'♜',B:'♝',N:'♞',P:'♟\uFE0E'};
+let bd,turn,sel,moves,hist,over;
+
+function init(){
+  const back='RNBQKBNR';
+  bd=Array(64).fill(null);
+  for(let i=0;i<8;i++){bd[i]='b'+back[i];bd[8+i]='bP';bd[48+i]='wP';bd[56+i]='w'+back[i];}
+  turn='w';sel=-1;moves=[];hist=[];over='';
+  draw();
+}
+
+function gen(b,i){
+  const p=b[i];if(!p)return[];
+  const c=p[0],t=p[1],r=i>>3,f=i&7,out=[];
+  const add=(rr,ff)=>{
+    if(rr<0||rr>7||ff<0||ff>7)return false;
+    const j=rr*8+ff,q=b[j];
+    if(q&&q[0]===c)return false;
+    out.push(j);return !q;
+  };
+  if(t==='P'){
+    const d=c==='w'?-1:1,st=c==='w'?6:1,rr=r+d;
+    if(rr>=0&&rr<8){
+      if(!b[rr*8+f]){out.push(rr*8+f);if(r===st&&!b[(r+2*d)*8+f])out.push((r+2*d)*8+f);}
+      for(const df of[-1,1]){const ff=f+df;if(ff>=0&&ff<8){const q=b[rr*8+ff];if(q&&q[0]!==c)out.push(rr*8+ff);}}
+    }
+  }else if(t==='N'){
+    for(const[a,e]of[[1,2],[2,1],[-1,2],[-2,1],[1,-2],[2,-1],[-1,-2],[-2,-1]])add(r+a,f+e);
+  }else if(t==='K'){
+    for(let a=-1;a<=1;a++)for(let e=-1;e<=1;e++)if(a||e)add(r+a,f+e);
+  }else{
+    const dirs=[];
+    if(t!=='B')dirs.push([1,0],[-1,0],[0,1],[0,-1]);
+    if(t!=='R')dirs.push([1,1],[1,-1],[-1,1],[-1,-1]);
+    for(const[a,e]of dirs)for(let k=1;;k++){if(!add(r+a*k,f+e*k))break;}
+  }
+  return out;
+}
+
+function inCheck(b,c){
+  const k=b.indexOf(c+'K');
+  for(let i=0;i<64;i++)if(b[i]&&b[i][0]!==c&&gen(b,i).includes(k))return true;
+  return false;
+}
+
+function legal(i){
+  const c=bd[i][0];
+  return gen(bd,i).filter(j=>{
+    const nb=bd.slice();nb[j]=nb[i];nb[i]=null;
+    return !inCheck(nb,c);
+  });
+}
+
+function hasMove(c){
+  for(let i=0;i<64;i++)if(bd[i]&&bd[i][0]===c&&legal(i).length)return true;
+  return false;
+}
+
+function play(i,j){
+  hist.push({bd:bd.slice(),turn});
+  bd[j]=bd[i];bd[i]=null;
+  if(bd[j][1]==='P'&&(j>>3===0||j>>3===7))bd[j]=bd[j][0]+'Q';
+  turn=turn==='w'?'b':'w';
+  sel=-1;moves=[];
+  if(!hasMove(turn))over=inCheck(bd,turn)?(turn==='w'?'Échec et mat : les Noirs gagnent':'Échec et mat : les Blancs gagnent'):'Pat : match nul';
+}
+
+function tap(i){
+  if(over)return;
+  if(sel>=0&&moves.includes(i))play(sel,i);
+  else if(bd[i]&&bd[i][0]===turn){sel=i;moves=legal(i);}
+  else{sel=-1;moves=[];}
+  draw();
+}
+
+function draw(){
+  const el=document.getElementById('b');
+  el.innerHTML='';
+  const chk=!over&&inCheck(bd,turn)?bd.indexOf(turn+'K'):-1;
+  for(let i=0;i<64;i++){
+    const s=document.createElement('div');
+    s.className='s '+(((i>>3)+(i&7))%2?'d':'l');
+    if(i===sel)s.classList.add('sel');
+    if(i===chk||(over.startsWith('Échec')&&i===bd.indexOf(turn+'K')))s.classList.add('chk');
+    if(moves.includes(i)){s.classList.add('mv');if(bd[i])s.classList.add('cap');}
+    if(bd[i]){
+      const sp=document.createElement('span');
+      sp.className=bd[i][0]==='w'?'w':'k';
+      sp.textContent=G[bd[i][1]];
+      s.appendChild(sp);
+    }
+    s.onclick=()=>tap(i);
+    el.appendChild(s);
+  }
+  document.getElementById('st').textContent=over||('Au tour des '+(turn==='w'?'Blancs':'Noirs')+(chk>=0?' : échec !':''));
+  document.getElementById('undo').disabled=!hist.length;
+}
+
+document.getElementById('new').onclick=init;
+document.getElementById('undo').onclick=()=>{
+  if(!hist.length)return;
+  const h=hist.pop();bd=h.bd;turn=h.turn;sel=-1;moves=[];over='';draw();
+};
+init();
+</script>
+</body>
+</html>
